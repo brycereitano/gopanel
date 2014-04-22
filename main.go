@@ -35,36 +35,25 @@ type Element struct {
  * To invoke this function: go Xtitle(2000, ch, errCh)
 */
 func Xtitle(interval int64, ch chan Element, errCh chan error) {
-	buff := make([]byte, 1024)
+	buff := make([]byte, 128)
 	cmd := exec.Command("xtitle", "-sf", "'%s'")
 
 	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		errCh <- err
-		return
-	}
+	if err != nil {errCh <- err;return}
 
 	err = cmd.Start()
-	if err != nil {
-		errCh <- err
-		return
+	if err != nil {errCh <- err;return}
+
+	for {
+		_, err = stdout.Read(buff)
+		if err != nil {errCh <- err;return}
+
+		out := "%{F{{ColorStatusFg}}B{{ColorStatusBg}}}" + strings.Fields(strings.TrimSpace(strings.TrimRight(string(buff), string(byte(0)))))[0]
+		ch <-Element{name:"xtitle",result:out}
+
+		buff = make([]byte, 128)
+		time.Sleep(time.Duration(interval) * time.Millisecond)
 	}
-
-	func() {
-		for {
-			_, err = stdout.Read(buff)
-			if err != nil {
-				errCh <- err
-				return
-			}
-
-			out := "%{F{{ColorStatusFg}}B{{ColorStatusBg}}}" + strings.Fields(strings.TrimSpace(strings.TrimRight(string(buff), string(byte(0)))))[0]
-			ch <-Element{name:"xtitle",result:out}
-			buff = make([]byte, 1024)
-
-			time.Sleep(time.Duration(interval) * time.Millisecond)
-		}
-	}()
 }
 
 /*
@@ -75,10 +64,7 @@ func Xtitle(interval int64, ch chan Element, errCh chan error) {
 func Load(interval int, ch chan Element, errCh chan error) {
 	for {
 		out, err := ioutil.ReadFile("/proc/loadavg")
-		if err != nil {
-			errCh <- err
-			return
-		}
+		if err != nil {errCh <- err;return}
 
 		outStr := strings.Fields(string(out))
 		result := "%{F{{ColorStatusFg}}B{{ColorStatusBg}}}" + fmt.Sprintf("Load: %s %s %s", outStr[0], outStr[1], outStr[2])
@@ -96,25 +82,14 @@ func Load(interval int, ch chan Element, errCh chan error) {
 func Memory(interval int64, ch chan Element, errCh chan error) {
 	for {
 		out, err := exec.Command("free", "-m").Output()
-		if err != nil {
-			errCh <- err
-			return
-		}
+		if err != nil {errCh <- err;return}
 
-		outStr := strings.Split(string(out), "\n")
-		outStr = strings.Fields(outStr[1])
-
-		used, err := strconv.ParseFloat(outStr[3], 32)
-		if err != nil {
-			errCh <- err
-			return
-		}
+		outStr := strings.Fields(strings.Split(string(out), "\n")[1])
 
 		total, err := strconv.ParseFloat(outStr[1], 32)
-		if err != nil {
-			errCh <- err
-			return
-		}
+		if err != nil {errCh <- err;return}
+		used, err := strconv.ParseFloat(outStr[3], 32)
+		if err != nil {errCh <- err;return}
 
 		result := "%{F{{ColorStatusFg}}B{{ColorStatusBg}}}" + fmt.Sprintf("Mem: %.2f/%.2fG", used/1024, total/1024)
 		ch <-Element{name:"memory",result:string(result)}
@@ -131,10 +106,7 @@ func Memory(interval int64, ch chan Element, errCh chan error) {
 func Volume(interval int64, ch chan Element, errCh chan error) {
 	for {
 		out, err := exec.Command("pacmd", "dump").Output()
-		if err != nil {
-			errCh <- err
-			return
-		}
+		if err != nil {errCh <- err;return}
 
 		outStr := strings.Split(string(out), "\n")
 		var desiredInt uint64
@@ -142,15 +114,13 @@ func Volume(interval int64, ch chan Element, errCh chan error) {
 			if strings.HasPrefix(value, "set-sink-volume") {
 				strs := strings.Fields(value)
 				desiredInt, err = strconv.ParseUint(strs[len(strs)-1][2:], 16, 16)
-				if err != nil {
-					errCh <- err
-					return
-				}
+				if err != nil {errCh <- err;return}
 			}
 		}
 
 		result :="%{F{{ColorStatusFg}}B{{ColorStatusBg}}}" +  fmt.Sprintf("Vol: %d%%", int(float64(desiredInt)/655.36))
 		ch <-Element{name:"volume",result:result}
+
 		time.Sleep(time.Duration(interval) * time.Millisecond)
 	}
 }
@@ -164,6 +134,7 @@ func Time(interval int, ch chan Element, errCh chan error) {
 	for {
 		result :="%{F{{ColorStatusFg}}B{{ColorStatusBg}}}" +  time.Now().Format("Mon, Jan 2, 2006 15:04:05")
 		ch <-Element{name:"time",result:string(result)}
+
 		time.Sleep(time.Duration(interval) * time.Millisecond)
 	}
 }
@@ -176,18 +147,14 @@ func Time(interval int, ch chan Element, errCh chan error) {
 func Temp(interval int, ch chan Element, errCh chan error) {
 	for {
 		out, err := ioutil.ReadFile("/sys/bus/platform/devices/coretemp.0/temp1_input")
-		if err != nil {
-			errCh <- err
-			return
-		}
+		if err != nil {errCh <- err;return}
 
 		temp, err := strconv.ParseInt(string(out[:len(out)-4]), 10, 16)
-		if err != nil {
-			errCh <- err
-			return
-		}
+		if err != nil {errCh <- err;return}
+
 		result := "%{F{{ColorStatusFg}}B{{ColorStatusBg}}}" + fmt.Sprintf("Temp: %dC", temp)
 		ch <-Element{name:"temp",result:result}
+
 		time.Sleep(time.Duration(interval) * time.Millisecond)
 	}
 }
@@ -202,66 +169,59 @@ func StatusWm(interval int64, ch chan Element, errCh chan error) {
 	cmd := exec.Command("bspc", "control", "--subscribe")
 
 	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		errCh <- err
-		return
-	}
+	if err != nil {errCh <- err;return}
 
 	err = cmd.Start()
-	if err != nil {
-		errCh <- err
-		return
-	}
+	if err != nil {errCh <- err;return}
 
-	func() {
-		for {
-			_, err = stdout.Read(buff)
-			if err != nil {
-				errCh <- err
-				return
+	for {
+		_, err = stdout.Read(buff)
+		if err != nil {errCh <- err;return}
+
+		temp := strings.TrimSpace(strings.TrimRight(string(buff), string(byte(0))))
+		tempSlice := strings.Split(temp, ":")
+		var out string
+		for _, str := range tempSlice {
+			switch str[0] {
+			case 'O':
+				out += "%{F{{ColorFocusedOccupiedFg}} U{{ColorFocusedOccupiedFg}} B{{ColorFocusedOccupiedBg}} +u} " + str[1:] + " %{-uB{{ColorBg}}}"
+			case 'F':
+				out += "%{F{{ColorFocusedFreeFg}} U{{ColorFocusedFreeFg}} B{{ColorFocusedFreeBg}} +u} " + str[1:] + " %{-uB{{ColorBg}}}"
+			case 'U':
+				out += "%{F{{ColorFocusedUrgentFg}} U{{ColorFocusedUrgentFg}} B{{ColorFocusedUrgentBg}} +u} " + str[1:] + " %{-uB{{ColorBg}}}"
+			case 'o':
+				out += "%{F{{ColorOccupiedFg}} B{{ColorOccupiedBg}}} " + str[1:] + " %{B{{ColorBg}}}"
+			case 'f':
+				out += "%{F{{ColorFreeFg}} B{{ColorFreeBg}}} " + str[1:] + " %{B{{ColorBg}}}"
+			case 'u':
+				out += "%{F{{ColorUrgentFg}} B{{ColorUrgentBg}}} " + str[1:] + " %{B{{ColorBg}}}"
+			case 'L':
+				out += "%{F{{ColorLayoutFg}} B{{ColorLayoutBg}}} " + strings.ToUpper(string(str[1])) + " %{B{{ColorBg}}}"
 			}
-
-			temp := strings.TrimSpace(strings.TrimRight(string(buff), string(byte(0))))
-			tempSlice := strings.Split(temp, ":")
-			var out string
-			for _, str := range tempSlice {
-				switch str[0] {
-				case 'O':
-					out += "%{F{{ColorFocusedOccupiedFg}} U{{ColorFocusedOccupiedFg}} B{{ColorFocusedOccupiedBg}} +u} " + str[1:] + " %{-uB{{ColorBg}}}"
-				case 'F':
-					out += "%{F{{ColorFocusedFreeFg}} U{{ColorFocusedFreeFg}} B{{ColorFocusedFreeBg}} +u} " + str[1:] + " %{-uB{{ColorBg}}}"
-				case 'U':
-					out += "%{F{{ColorFocusedUrgentFg}} U{{ColorFocusedUrgentFg}} B{{ColorFocusedUrgentBg}} +u} " + str[1:] + " %{-uB{{ColorBg}}}"
-				case 'o':
-					out += "%{F{{ColorOccupiedFg}} B{{ColorOccupiedBg}}} " + str[1:] + " %{B{{ColorBg}}}"
-				case 'f':
-					out += "%{F{{ColorFreeFg}} B{{ColorFreeBg}}} " + str[1:] + " %{B{{ColorBg}}}"
-				case 'u':
-					out += "%{F{{ColorUrgentFg}} B{{ColorUrgentBg}}} " + str[1:] + " %{B{{ColorBg}}}"
-				case 'L':
-					out += "%{F{{ColorLayoutFg}} B{{ColorLayoutBg}}} " + strings.ToUpper(string(str[1])) + " %{B{{ColorBg}}}"
-				}
-			}
-			ch <- Element{name:"wm",result:out}
-			buff = make([]byte, 1024)
-
-			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
-	}()
+		ch <- Element{name:"wm",result:out}
+		buff = make([]byte, 1024)
+
+		time.Sleep(time.Duration(interval) * time.Millisecond)
+	}
 }
 
 func DisplayInfo(format string) func(Element) {
 	var outString string
 	elements := make(map[string] Element)
+
 	return func(item Element) {
 		elements[item.name] = item
 		outString = format
+
 		for key, value := range elements {
 			outString = strings.Replace(outString, "{{"+key+"}}", value.result, -1)
 		}
+
 		for key, value := range COLORS {
 			outString = strings.Replace(outString, key,	value, -1)
 		}
+
 		fmt.Println(outString)
 	}
 }
