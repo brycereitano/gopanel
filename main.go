@@ -35,23 +35,14 @@ type Element struct {
  * To invoke this function: go Xtitle(2000, ch, errCh)
 */
 func Xtitle(interval int64, ch chan Element, errCh chan error) {
-	buff := make([]byte, 128)
-	cmd := exec.Command("xtitle", "-sf", "'%s'")
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {errCh <- err;return}
-
-	err = cmd.Start()
-	if err != nil {errCh <- err;return}
-
 	for {
-		_, err = stdout.Read(buff)
+		out, err := exec.Command("xtitle", "-f", "'%s'").Output()
 		if err != nil {errCh <- err;return}
 
-		out := "%{F{{ColorStatusFg}}B{{ColorStatusBg}}}" + strings.Fields(strings.TrimSpace(strings.TrimRight(string(buff), string(byte(0)))))[0]
-		ch <-Element{name:"xtitle",result:out}
+		outStr := strings.TrimSpace(string(out))
+		result := "%{F{{ColorTitleFg}}B{{ColorTitleBg}}}" + outStr
+		ch <-Element{name:"xtitle",result:string(result)}
 
-		buff = make([]byte, 128)
 		time.Sleep(time.Duration(interval) * time.Millisecond)
 	}
 }
@@ -113,7 +104,7 @@ func Volume(interval int64, ch chan Element, errCh chan error) {
 		for _, value := range outStr {
 			if strings.HasPrefix(value, "set-sink-volume") {
 				strs := strings.Fields(value)
-				desiredInt, err = strconv.ParseUint(strs[len(strs)-1][2:], 16, 16)
+				desiredInt, err = strconv.ParseUint(strs[len(strs)-1][2:], 16, 32)
 				if err != nil {errCh <- err;return}
 			}
 		}
@@ -239,7 +230,8 @@ func main() {
 	go StatusWm(200, ch, errCh)
 
 	format := fmt.Sprint("%{l}{{wm}} %{c}{{xtitle}} %{r}{{volume}} | {{memory}} | {{load}} | {{temp}} | {{time}}")
-	format = fmt.Sprint("%{S0}", format, "%{S1}", format, "%{S2}", format)
+	//format = fmt.Sprint("%{S0}", format, "%{S1}", format, "%{S2}", format)
+	format = fmt.Sprint("%{S0}", format)
 	DisplayClosure := DisplayInfo(format)
 	for {
 		select {
@@ -248,7 +240,7 @@ func main() {
 		default:
 			select {
 			case item := <-ch:
-				DisplayClosure(item)
+				go DisplayClosure(item)
 			}
 		}
 	}
