@@ -156,22 +156,13 @@ func Temp(interval int, ch chan Element, errCh chan error) {
  * To invoke this function: go StatusWm(2000, ch, errCh)
 */
 func StatusWm(interval int64, ch chan Element, errCh chan error) {
-	buff := make([]byte, 1024)
-	cmd := exec.Command("bspc", "control", "--subscribe")
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {errCh <- err;return}
-
-	err = cmd.Start()
-	if err != nil {errCh <- err;return}
-
 	for {
-		_, err = stdout.Read(buff)
+		byt, err := exec.Command("bspc", "control", "--get-status").Output()
 		if err != nil {errCh <- err;return}
 
-		temp := strings.TrimSpace(strings.TrimRight(string(buff), string(byte(0))))
-		tempSlice := strings.Split(temp, ":")
 		var out string
+		temp := strings.TrimSpace(string(byt))
+		tempSlice := strings.Split(temp, ":")
 		for _, str := range tempSlice {
 			switch str[0] {
 			case 'O':
@@ -191,7 +182,6 @@ func StatusWm(interval int64, ch chan Element, errCh chan error) {
 			}
 		}
 		ch <- Element{name:"wm",result:out}
-		buff = make([]byte, 1024)
 
 		time.Sleep(time.Duration(interval) * time.Millisecond)
 	}
